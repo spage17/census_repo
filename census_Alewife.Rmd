@@ -1,0 +1,87 @@
+---
+title: "White Residents in Cambridge"
+output: html_document
+---
+
+```{r message = FALSE, warning = FALSE, echo = FALSE}
+library(leaflet)
+library(sf)
+library(tidyverse)
+library(tidycensus)
+library(ggthemes)
+library(ggspatial)
+library(htmlwidgets)
+library(tidytransit)
+library(tigris)
+```
+```{r message = FALSE, warning = FALSE, echo = FALSE, results = 'hide'}
+acs_vars <- load_variables(2019, "acs5")
+
+race <- get_acs(geography = "tract", county = "Middlesex", state = "MA", 
+                           year = 2019, survey = "acs5",
+                           variables = c(tot_pop = "B03002_001", white_pop = "B03002_003"),
+                           output = "wide", geometry = TRUE) 
+```
+
+```{r message = FALSE, warning = FALSE, echo = FALSE}
+race <- race %>%
+  select(-tot_popM, -white_popM) %>%
+  filter(tot_popE > 0) %>%
+  mutate(pct_white = round(100 * white_popE / tot_popE, 1))
+
+palette <- colorNumeric(c("Blues"),
+                               race$pct_white)
+
+MA_state_plane <- "+proj=lcc +lat_1=42.68333333333333 +lat_2=41.71666666666667 +lat_0=41 +lon_0=-71.5 +x_0=200000.0001016002 +y_0=750000 +ellps=GRS80 +datum=NAD83 +to_meter=0.3048006096012192 +no_defs"
+
+Cambridge_city_limits <- places("Massachusetts") %>%
+  filter(NAME == "Cambridge")
+
+race <- race[Cambridge_city_limits,]
+```
+
+```{r}
+ggplot(race) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "stamenbw") +
+  geom_sf(color = NA, aes(fill = pct_white), alpha = 0.7) +
+  coord_sf(crs = MA_state_plane) +
+  scale_fill_continuous(low="cornsilk", high="darkgreen", 
+                       na.value=NA,
+                       name = "Percent of population\nidentifying as white alone",
+                       breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1),
+                       labels = c("0", "20%", "40%", "60%", "80%", "100%")) +
+  theme_void() 
+```
+
+```{r message = FALSE, warning = FALSE, echo = FALSE}
+race_map <- leaflet(race) %>%
+  addProviderTiles("CartoDB.Voyager") %>%
+  addPolygons(fillColor = ~palette(pct_white), weight = 1, color = "gray", fillOpacity = 0.7,
+              highlightOptions = highlightOptions(fillColor = "green", fillOpacity = 0.9),
+              label = race$NAME,
+              popup = paste("Total residents: ", race$tot_popE, "<br/>",
+                            "White residents: ", race$white_popE, " (", 
+                           race$pct_white, "%)", sep = "")) %>%
+    addLegend("bottomleft", pal = palette, values = ~pct_white,
+    title = "Percent of residents<br/>who are white (non-hispanic)",
+    labFormat = labelFormat(suffix = "%"),
+    opacity = 1)
+
+limits <- st_bbox(race)
+
+map2 <- race_map %>%
+   fitBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) %>%
+   setMaxBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) 
+
+map2
+```
+```{r}
+saveWidget(map2, file="alewife_race_map.html")
+```
+

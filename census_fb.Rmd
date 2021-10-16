@@ -1,0 +1,74 @@
+---
+title: "Foreign-born Residents in Suffolk and Middlesex Counties"
+author: "Samantha Page"
+date: "10/14/2021"
+output: html_document
+---
+
+```{r message = FALSE, warning = FALSE, echo = FALSE}
+library(leaflet)
+library(sf)
+library(tidyverse)
+library(tidycensus)
+library(ggthemes)
+library(ggspatial)
+library(htmlwidgets)
+library(tidytransit)
+```
+```{r message = FALSE, warning = FALSE, echo = FALSE, results = 'hide'}
+MA_E_fb <- get_acs(geography = "tract", county = c("Suffolk", "Middlesex"), state = "MA", 
+                           year = 2019, survey = "acs5",
+                           variables = c(tot_pop = "B05002_001", fb_pop = "B05002_013"),
+                           output = "wide", geometry = TRUE) 
+```
+
+```{r message = FALSE, warning = FALSE, echo = FALSE}
+MA_E_fb <- MA_E_fb %>%
+  select(-tot_popM, -fb_popM) %>%
+  filter(tot_popE > 0) %>%
+  mutate(pct_fb = round(100 * fb_popE / tot_popE, 1))
+
+MA_E_palette <- colorNumeric(c("Blues"),
+                               MA_E_fb$pct_fb)
+
+MA_state_plane <- "+proj=lcc +lat_1=42.68333333333333 +lat_2=41.71666666666667 +lat_0=41 +lon_0=-71.5 +x_0=200000.0001016002 +y_0=750000 +ellps=GRS80 +datum=NAD83 +to_meter=0.3048006096012192 +no_defs"
+```
+
+
+
+This map illustrates the percentage of residents in Suffolk and Middlesex counties who were born outside of the United States, divided by census tracts. I included Middlesex County to see the makeup of foreign-born residents in the areas surrounding Harvard University, but I found it made for an interesting comparison beyond Boston and Cambridge's urban centers. The percentages of foreign-born residents drops noticeably as the county moves farther west, with the exception of some other urban centers like Lowell.
+
+
+
+
+
+
+```{r message = FALSE, warning = FALSE, echo = FALSE}
+MA_E_fb_map <- leaflet(MA_E_fb) %>%
+  addProviderTiles("CartoDB.Voyager") %>%
+  addPolygons(fillColor = ~MA_E_palette(pct_fb), weight = 1, color = "gray", fillOpacity = 0.7,
+              highlightOptions = highlightOptions(fillColor = "green", fillOpacity = 0.9),
+              label = MA_E_fb$NAME,
+              popup = paste("Total residents: ", MA_E_fb$tot_popE, "<br/>",
+                            "Foreign-born residents: ", MA_E_fb$fb_popE, " (", 
+                           MA_E_fb$pct_fb, "%)", sep = "")) %>%
+    addLegend("bottomleft", pal = MA_E_palette, values = ~pct_fb,
+    title = "Percent of residents<br/>born outside the United States",
+    labFormat = labelFormat(suffix = "%"),
+    opacity = 1)
+
+limits <- st_bbox(MA_E_fb)
+
+map2 <- MA_E_fb_map %>%
+   fitBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) %>%
+   setMaxBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) 
+
+map2
+```
+

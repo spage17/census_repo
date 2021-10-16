@@ -1,0 +1,176 @@
+---
+title: "census"
+author: "SP"
+date: "10/11/2021"
+output: html_document
+---
+
+```{r message = FALSE, warning = FALSE, echo = FALSE}
+library(leaflet)
+library(sf)
+library(tidyverse)
+library(tidycensus)
+library(ggthemes)
+library(ggspatial)
+library(htmlwidgets)
+library(tidytransit)
+```
+
+```{r}
+MA_E_fb <- get_acs(geography = "tract", county = c("Suffolk", "Middlesex"), state = "MA", 
+                           year = 2019, survey = "acs5",
+                           variables = c(tot_pop = "B05002_001", fb_pop = "B05002_013"),
+                           output = "wide", geometry = TRUE) 
+```
+
+```{r}
+MA_E_fb <- MA_E_fb %>%
+  mutate(pct_fb = fb_popE / tot_popE) %>%
+  filter(tot_popE > 0)
+```
+
+```{r}
+MA_state_plane <- "+proj=lcc +lat_1=42.68333333333333 +lat_2=41.71666666666667 +lat_0=41 +lon_0=-71.5 +x_0=200000.0001016002 +y_0=750000 +ellps=GRS80 +datum=NAD83 +to_meter=0.3048006096012192 +no_defs"
+
+ggplot(MA_E_fb) +
+  annotation_map_tile(zoomin = 0, progress = "none", type = "stamenbw") +
+  geom_sf(color = NA, aes(fill = pct_fb), alpha = 0.7) +
+  coord_sf(crs = MA_state_plane) +
+  scale_fill_continuous(low="cornsilk", high="darkgreen", 
+                       na.value=NA,
+                       name = "Percent of Suffolk and Middlesex County residents\nidentifying as foreign born",
+                       breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1),
+                       labels = c("0", "20%", "40%", "60%", "80%", "100%")) +
+  theme_void() 
+```
+```{r}
+MA_E_fb <- MA_E_fb %>%
+  select(-tot_popM, -fb_popM) %>%
+  filter(tot_popE > 0) %>%
+  mutate(pct_fb = round(100 * fb_popE / tot_popE, 1))
+
+MA_E_palette <- colorNumeric(c("Greens"),
+                               MA_E_fb$pct_fb)
+
+MA_E_fb_map <- leaflet(MA_E_fb) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(fillColor = ~MA_E_palette(pct_fb), weight = 1, color = "gray", fillOpacity = 0.7,
+              highlightOptions = highlightOptions(fillColor = "yellow", fillOpacity = 0.9),
+              label = MA_E_fb$NAME,
+              popup = paste("Total residents: ", MA_E_fb$tot_popE, "<br/>",
+                            "Foreign-born residents: ", MA_E_fb$fb_popE, " (", 
+                           MA_E_fb$pct_fb, "%)", sep = "")) %>%
+    addLegend("bottomright", pal = MA_E_palette, values = ~pct_fb,
+    title = "Percent of residents<br/>born outside the United States",
+    labFormat = labelFormat(suffix = "%"),
+    opacity = 1)
+
+MA_E_fb_map 
+```
+
+```{r}
+MA_HO_palette <- colorNumeric(c("cornsilk", "darkgreen"), Berkshire_ho$pct_Black)
+
+HO_map1 <- leaflet(Berkshire_ho) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(stroke = FALSE, fillOpacity = 0.7,
+    color = ~MA_HO_palette(pct_Black)) %>%
+  addLegend("bottomright", pal = MA_HO_palette, values = ~pct_Black,
+    title = "Percent of homeowner population<br/>identifying as Black alone",
+    labFormat = labelFormat(suffix = "%",
+                            transform = function(x) 100 * x),
+    opacity = 1)
+
+HO_map1
+```
+```{r}
+HO_map2 <- leaflet(Berkshire_ho) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(color = ~MA_HO_palette(pct_Black), stroke = FALSE, fillOpacity = 0.7,
+              highlightOptions = highlightOptions(fillColor = "darkorange", fillOpacity = 0.9),
+              label = Berkshire_ho$NAME,
+              popup = paste("Total population: ", Berkshire_ho$tot_ho_pop, "<br/>",
+                            "Black population: ", Berkshire_ho$b_ho_pop, " (", 
+                            round(Berkshire_ho$pct_Black * 100, 1), "%)", sep = "")) %>%
+    addLegend("bottomright", pal = MA_HO_palette, values = ~pct_Black,
+    title = "Percent of homeowner population<br/>identifying as Black alone",
+    labFormat = labelFormat(suffix = "%",
+                            transform = function(x) 100 * x),
+    opacity = 1)
+
+HO_map2
+```
+```{r}
+transit_Suffolk <- get_acs(geography = "tract", county = "Suffolk", state = "MA", 
+                           year = 2019, survey = "acs5",
+                           variables = c(tot_wrkrs = "B08301_001", pt_wrkrs = "B08301_010"),
+                           output = "wide", geometry = TRUE) 
+```
+```{r}
+transit_Suffolk <- transit_Suffolk %>%
+  select(-tot_wrkrsM, -pt_wrkrsM) %>%
+  filter(tot_wrkrsE > 0) %>%
+  mutate(pct_transit = round(100 * pt_wrkrsE / tot_wrkrsE, 1))
+```
+
+```{r}
+transit_palette <- colorNumeric(c("pink", "lightblue"),
+                                transit_Suffolk$pct_transit)
+
+transit_map <- leaflet(transit_Suffolk) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(fillColor = ~transit_palette(pct_transit), weight = 1, color = "gray", fillOpacity = 0.7,
+              highlightOptions = highlightOptions(fillColor = "yellow", fillOpacity = 0.9),
+              label = transit_Suffolk$NAME,
+              popup = paste("Total workers: ", transit_Suffolk$tot_wrkrsE, "<br/>",
+                            "Transit commuters: ", transit_Suffolk$pt_wrkrsE, " (", 
+                            transit_Suffolk$pct_transit, "%)", sep = "")) %>%
+    addLegend("bottomright", pal = transit_palette, values = ~pct_transit,
+    title = "Percent of workers<br/>communting by transit",
+    labFormat = labelFormat(suffix = "%"),
+    opacity = 1)
+
+transit_map
+```
+```{r}
+MBTA_url <- feedlist[feedlist$t == "MBTA GTFS",]$url_d
+
+MBTA <- read_gtfs(MBTA_url)
+
+transit_stops <- MBTA$stops
+
+transit_stations <- transit_stops %>%
+  filter(location_type == 1)
+```
+
+```{r}
+station_sf <- st_as_sf(transit_stations, 
+                          coords = c("stop_lon", "stop_lat"), 
+                          crs = "WGS84")
+```
+
+```{r}
+transit_map2 <- transit_map %>%
+  addMarkers(lng = transit_stations$stop_lon,
+             lat = transit_stations$stop_lat,
+             popup = transit_stations$stop_name)
+
+transit_map2
+```
+```{r}
+limits <- st_bbox(transit_Suffolk)
+
+transit_map3 <- transit_map2 %>%
+   fitBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) %>%
+   setMaxBounds( lng1 = as.numeric(limits[1]),
+                lat1 = as.numeric(limits[2]),
+                lng2 = as.numeric(limits[3]),
+                lat2 = as.numeric(limits[4])) 
+
+transit_map3
+```
+
+
